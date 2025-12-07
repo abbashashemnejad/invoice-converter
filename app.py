@@ -1,124 +1,164 @@
 import streamlit as st
 import pandas as pd
-import yaml
-import hashlib
+import json
 import os
 
-st.set_page_config(page_title="کانورتور فاکتور مالیاتی", layout="wide")
-st.title("کانورتور هوشمند فاکتور به فرمت استاندارد سازمان امور مالیاتی")
+st.set_page_config(page_title="کانورتور فاکتور", layout="wide")
+st.title("🛡️ کانورتور هوشمند فاکتور به فرمت مالیاتی")
 
-# --- سیستم ورود ساده ---
+# ورود ساده (بدون yaml)
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
+    st.session_state.username = None
 
 def login():
-    st.sidebar.header("ورود به سیستم")
-    username = st.sidebar.text_input("نام کاربری")
-    password = st.sidebar.text_input("رمز عبور", type="password")
-    if st.sidebar.button("ورود"):
-        if username == "admin" and password == "123456":
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            st.sidebar.success("ورود موفق!")
-        else:
-            st.sidebar.error("نام کاربری یا رمز اشتباه است")
+    with st.sidebar:
+        st.header("🔐 ورود")
+        uname = st.text_input("نام کاربری")
+        pwd = st.text_input("رمز عبور", type="password")
+        if st.button("ورود"):
+            if uname == "admin" and pwd == "123456":
+                st.session_state.logged_in = True
+                st.session_state.username = uname
+                st.success("ورود موفق!")
+                st.rerun()
+            else:
+                st.error("❌ اشتباه است")
+        st.info("نام کاربری: admin | رمز: 123456")
 
 if not st.session_state.logged_in:
     login()
     st.stop()
 
-if st.sidebar.button("خروج"):
+# دکمه خروج
+if st.sidebar.button("🚪 خروج"):
     st.session_state.logged_in = False
+    st.session_state.username = None
     st.rerun()
 
-# --- الگوهای استاندارد ---
+st.sidebar.success(f"خوش آمدید {st.session_state.username}!")
+
+# الگوهای ساده (بدون yaml — مستقیم در کد)
 templates = {
     "الگوی اول (فروش)": [
         "شماره منحصر به فرد مالیاتی", "تاریخ صدور", "نوع صورتحساب", "الگوی صورتحساب",
-        "شماره اقتصادی فروشنده", "مجموع مبلغ قبل تخفیف", "مجموع تخفیفات", "مجموع پس از تخفیف",
-        "مالیات ارزش افزوده", "مجموع صورتحساب", "شناسه کالا", "تعداد", "قیمت واحد", "مبلغ کل"
+        "شماره اقتصادی فروشنده", "مجموع مبلغ قبل از تخفیف", "مجموع تخفیفات", 
+        "مجموع مبلغ پس از تخفیف", "مجموع مالیات بر ارزش افزوده", "مجموع صورتحساب"
     ],
-    "الگوی سوم (طلا و جواهر)": [
+    "الگوی سوم (طلا، جواهر و پلاتین)": [
         "شماره منحصر به فرد مالیاتی", "تاریخ صدور", "وزن خالص", "عیار", "قیمت هر گرم",
-        "اجرت ساخت", "سود فروشنده", "حق العمل", "جمع کل اجرت و سود", "مالیات", "مجموع صورتحساب"
+        "اجرت ساخت", "سود فروشنده", "حق العمل", "جمع کل اجرت، حق العمل و سود", 
+        "مجموع مالیات بر ارزش افزوده", "مجموع صورتحساب"
     ]
+    # می‌تونی الگوهای بیشتر اضافه کنی
 }
 
-# --- ذخیره تنظیمات ---
-config_file = "user_config.yaml"
+# تنظیمات ساده با JSON
+config_file = "config.json"
+user_config = {}
 if os.path.exists(config_file):
     with open(config_file, "r", encoding="utf-8") as f:
-        user_config = yaml.safe_load(f) or {}
-else:
-    user_config = {}
+        user_config = json.load(f)
 
-st.header("۱. انتخاب الگوی صورتحساب")
-template = st.selectbox("الگوی مورد نظر را انتخاب کنید", list(templates.keys()))
+st.header("📋 ۱. انتخاب الگوی صورتحساب")
+template = st.selectbox("الگو را انتخاب کنید:", list(templates.keys()), key="template")
 
 if template:
-    st.success(f"الگوی انتخاب شده: **{template}**")
+    st.success(f"✅ الگوی انتخاب شده: **{template}**")
     fields = templates[template]
     
-    st.header("۲. مپ کردن ستون‌های فایل شما")
+    # مپینگ فیلدها
+    st.header("🔄 ۲. مپ کردن ستون‌های فایل اکسل شما")
     mapping = user_config.get(template, {})
-    
     new_mapping = {}
+    
     for field in fields:
-        default = mapping.get(field, "")
-        col = st.text_input(f"ستون **{field}** در فایل شما کجاست؟ (مثل A یا H یا نام ستون)", value=default, key=field)
-        if col.strip():
-            new_mapping[field] = col.strip()
+        default_col = mapping.get(field, "")
+        col_input = st.text_input(
+            f"ستون **{field}** در فایل شما (مثل A, B, H یا نام ستون):", 
+            value=default_col, 
+            key=f"{template}_{field}"
+        )
+        if col_input.strip():
+            new_mapping[field] = col_input.strip()
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("ذخیره تنظیمات (دفعه بعد لازم نیست دوباره وارد کنی)"):
-            user_config[template] = new_mapping
-            with open(config_file, "w", encoding="utf-8") as f:
-                yaml.dump(user_config, f, allow_unicode=True)
-            st.success("تنظیمات با موفقیت ذخیره شد!")
+    # ذخیره تنظیمات با JSON
+    if st.button("💾 ذخیره تنظیمات (دفعه بعد لازم نیست دوباره مپ کنی)"):
+        user_config[template] = new_mapping
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(user_config, f, ensure_ascii=False, indent=4)
+        st.success("✅ تنظیمات ذخیره شد! حالا می‌تونی فایل آپلود کنی.")
 
-    st.header("۳. آپلود فایل اکسل و دریافت خروجی")
-    uploaded_file = st.file_uploader("فایل اکسل خود را اینجا بکشید", type=["xlsx", "xls"])
+    # آپلود و تبدیل
+    st.header("📁 ۳. آپلود فایل و دریافت خروجی استاندارد")
+    uploaded_file = st.file_uploader("فایل اکسل خود را آپلود کنید:", type=["xlsx", "xls"])
 
     if uploaded_file and new_mapping:
         try:
-            df = pd.read_excel(uploaded_file)
-            headers = df.columns.tolist()
-            
-            output_df = pd.DataFrame()
-            
+            # خواندن فایل
+            df_input = pd.read_excel(uploaded_file)
+            headers = df_input.columns.tolist()
+            st.info(f"📊 فایل آپلود شد: {len(df_input)} ردیف، ستون‌ها: {', '.join([str(h) for h in headers[:5]])}...")
+
+            # ایجاد خروجی استاندارد
+            df_output = pd.DataFrame()
+            missing_cols = []
+
             for field, user_col in new_mapping.items():
-                if user_col.isdigit():
+                col_found = False
+                if user_col.isalpha() and len(user_col) <= 2:  # مثل A, B, AA
+                    try:
+                        col_idx = ord(user_col[0].upper()) - ord('A')
+                        if len(user_col) > 1:
+                            col_idx = col_idx * 26 + (ord(user_col[1].upper()) - ord('A'))
+                        df_output[field] = df_input.iloc[:, col_idx]
+                        col_found = True
+                    except:
+                        pass
+                elif user_col.isdigit():  # شماره ستون مثل 1, 8
                     col_idx = int(user_col) - 1
-                else:
-                    col_idx = headers.index(user_col) if user_col in headers else None
-                
-                if col_idx is not None and col_idx < len(df.columns):
-                    output_df[field] = df.iloc[:, col_idx]
-                else:
-                    output_df[field] = ""
-                    st.warning(f"ستون {user_col} برای {field} پیدا نشد")
+                    if 0 <= col_idx < len(df_input.columns):
+                        df_output[field] = df_input.iloc[:, col_idx]
+                        col_found = True
+                else:  # نام ستون
+                    if user_col in headers:
+                        df_output[field] = df_input[user_col]
+                        col_found = True
 
-            st.success("تبدیل با موفقیت انجام شد!")
-            st.dataframe(output_df.head(10))
+                if not col_found:
+                    df_output[field] = ""  # خالی اگر پیدا نشد
+                    missing_cols.append(f"{field} ({user_col})")
 
-            csv = output_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-            st.download_button(
-                label="دانلود فایل استاندارد (CSV)",
-                data=csv,
-                file_name=f"فاکتور_استاندارد_{template.replace(' ', '_')}.csv",
-                mime="text/csv"
-            )
-            
-            excel_bytes = output_df.to_excel(index=False, engine='openpyxl')
-            st.download_button(
-                label="دانلود فایل استاندارد (Excel)",
-                data=excel_bytes,
-                file_name=f"فاکتور_استاندارد_{template.replace(' ', '_')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-            
+            if missing_cols:
+                st.warning(f"⚠️ ستون‌های پیدا نشده: {', '.join(missing_cols)} — این‌ها خالی می‌مونن.")
+
+            # نمایش پیش‌نمایش
+            st.subheader("🔍 پیش‌نمایش خروجی:")
+            st.dataframe(df_output.head(10))
+
+            # دانلودها
+            col1, col2 = st.columns(2)
+            with col1:
+                csv_data = df_output.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                st.download_button(
+                    label="📥 دانلود CSV",
+                    data=csv_data,
+                    file_name=f"فاکتور_استاندارد_{template.replace(' ', '_')}.csv",
+                    mime="text/csv"
+                )
+            with col2:
+                excel_data = df_output.to_excel(index=False, engine='openpyxl')
+                st.download_button(
+                    label="📥 دانلود Excel",
+                    data=excel_data,
+                    file_name=f"فاکتور_استاندارد_{template.replace(' ', '_')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
+            st.success("🎉 تبدیل با موفقیت انجام شد! فایل‌های دانلود رو چک کن.")
+
         except Exception as e:
-            st.error(f"خطا در خواندن فایل: {e}")
+            st.error(f"❌ خطا در تبدیل: {str(e)} — لطفاً فایل رو چک کن یا ستون‌ها رو دوباره وارد کن.")
 
-st.info("نکته: بعد از اولین بار تنظیم ستون‌ها، دفعه بعد فقط فایل آپلود کنید و خروجی بگیرید!")
+st.markdown("---")
+st.caption("💡 نکته: برای الگوهای بیشتر یا تغییرات، با پشتیبانی تماس بگیر.")
